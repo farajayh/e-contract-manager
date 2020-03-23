@@ -1,40 +1,51 @@
 <?php
 ob_start();
 session_start();
+
+//check if user is logged in
 if(!isset($_SESSION['logged_in']) or $_SESSION['logged_in'] != 1)
 {
   header("location: login.php");
 }
-include "dbConfig.php";
+
+//include database and project object files
+require "config/db_connection.php";
+require "projects/project.php";
+require "users/users.php";
+
+//initialise the database
+$database = new Database();
+$db = $database->get_conn();
+
+//initialise project and user objects
+$project = new Project($db);
+$user = new User($db);
+
 $id = $_GET['id'];
 $msg = "";
-$query = "SELECT * FROM contracts WHERE contract_id='$id'";
-$result = mysqli_query($db, $query);
-if (mysqli_num_rows($result) == 1) {
-  $row = mysqli_fetch_array($result);
-  print_r($row);
+
+$project->contract_id = $id;
+
+$result = $project->view_one();
+
+if ($result->rowCount() < 1) {
+  $msg = "The project does not exist";
+  header("location: index.php");
 }
-if ($row) {
-     
-    $prev_deadline = $row['end_date'];
-}
+
+$row = $result->fetch(PDO::FETCH_ASSOC);
+$prev_deadline = $row['end_date'];
+
 if (isset($_POST['done'])) {
     $new_deadline = $_POST['new_deadline'];
     if ($new_deadline > $prev_deadline) {
-        $query = "UPDATE contracts SET end_date = '$new_deadline' WHERE contract_id = '$id'";
-        $result = mysqli_query($db, $query);
-        if(!$result){print_r(mysqli_error_list($db));}
-        $user_id =  $_SESSION['user_id'];
-        $query = "SELECT * FROM users WHERE user_id = '$user_id' ";
-        $result = mysqli_query($db, $query);
-        $row = mysqli_fetch_assoc($result);
+        $project->end_date = $new_deadline;
+        $user->user_id =  $_SESSION['user_id'];
+        $user_result = $user->get_user();
+        $row = $user_result->fetch(PDO::FETCH_ASSOC);
         $name = $row['surname']." ".$row['first_name'];
-        $time = date("y-m-d h:i:s");
-        $query = "UPDATE contracts SET last_modified = '$time' WHERE contract_id = '$id'";
-        $result = mysqli_query($db, $query);
-        $query = "UPDATE contracts SET last_modified_by = '$name' WHERE contract_id = '$id'";
-        $result = mysqli_query($db, $query);
-        if ($result) {
+        $project->last_modified_by = $name;  
+        if ($project->extend()) {
           header('location: index.php');
         }
     }
@@ -57,17 +68,17 @@ if (isset($_POST['done'])) {
 }
 </style>
 </head>
-<body><!--
+<body>
 <nav class="navbar navbar-inverse">
   <div class="container-fluid">
     <div class="navbar-header">
-      <a class="navbar-brand" href="index.php">LASU E-Contract Manager</a>
+      <a class="navbar-brand" href="index.php">E-Contract Manager</a>
     </div>
     <ul class="nav navbar-right">
       <li class="btn"><a href="logout.php">Log Out</a></li>
     </ul>
   </div>
-</nav>-->
+</nav>
 <div style="min-height: 200px; max-height: 3000000px;">
 <div class="kp"> 
 <div class="row">

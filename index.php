@@ -1,30 +1,44 @@
 <?php
 session_start();
 ob_start();
+
+//check if user is logged in
 if (!isset($_SESSION['logged_in']) or $_SESSION['logged_in'] != 1) {
     header("location: login.php");
 }
- include "dbConfig.php";
- $msg = "";
+
+//include database and project object files
+require "config/db_connection.php";
+require "projects/project.php";
+ 
+ //initialise the database
+$database = new Database();
+$db = $database->get_conn();
+
+ $msg = ""; //initialise output variable
+ 
+ //random string generating function
  function random_string($max = 8)
  {
      $rtn = "";
      $chars = explode(" ", "a b c d e f g h i j k l m n o p q r s t u v w x y z 0 1 2 3 4 5 6 7 8 9");
      for ($i = 0; $i < $max; $i++) {
          $rnd = array_rand($chars);
-         $rtn = base64_encode(md5($chars[$rnd]));
+         $rtn .= base64_encode(md5($chars[$rnd]));
      }
      return substr(str_shuffle(strtolower($rtn)), 0, $max);
  }
+
+ //function to clean and validate data
 function validate($data)
 {
     global $db;
     $data = trim($data);
     $data = stripslashes($data);
     $data = htmlspecialchars($data);
-    $data = mysqli_real_escape_string($db, $data);
     return $data;
 }
+
 $title = "";
 $details =  "";
 $contractor = "";
@@ -32,12 +46,21 @@ $cont_email =  "";
 $cont_phone_num =  "";
 $s_date ="";
 $e_date =  "";
+
 //$current_date = date("Y-m-d");
+
+//initialise project object
+$project = new Project($db);
+
+
   if (isset($_POST['add'])) {
+
+      //validate input
       $title = validate($_POST['title']);
       $details =  validate($_POST['details']);
       $contractor =  validate($_POST['contractor']);
       $cont_email =  validate($_POST['cont_email']);
+
       if (!filter_var($cont_email, FILTER_VALIDATE_EMAIL)) {
           $msg = "Invalid email format";
       } else {
@@ -48,22 +71,31 @@ $e_date =  "";
           $current_date = new datetime(date("d-m-Y"));
           $d1 = new datetime($s_date);
           $datetime2 = new DateTime($e_date);
+
           if ($d1 < $current_date) {
               $msg = "Please input correct date";
           } elseif ($d1 >= $datetime2) {
               $msg = "Please input correct dates";
           } else {
+              $project->contract_id = $contract_id;
+              $project->title = $title;
+              $project->details = $details;
+              $project->contractor = $contractor;
+              $project->contractor_email = $cont_email;
+              $project->contractor_phone_number = $cont_phone_num;
+              $project->start_date = $s_date;
+              $project->end_date = $e_date;
               $user_id = $_SESSION['user_id'];
-              $query = "INSERT INTO contracts (`contract_id`,`title` , `details`,`start_date`, `end_date`, `user_id`,`contractor`, `contractor_email`,`contractor_phone_number`) 
-      VALUES ('$contract_id','$title','$details','$s_date','$e_date', '$user_id','$contractor','$cont_email','$cont_phone_num')";
-              $result = mysqli_query($db, $query);
-              $query_id = mysqli_insert_id($db);
-              $new_contract_id = substr($contract_id,0,3).$query_id.substr($contract_id,3,5);
+              $project->user_id = $user_id;
+              $project->add();
+              //$query_id = mysqli_insert_id($db);
+              $query_id = $db->lastInsertId();
+              /*$new_contract_id = substr($contract_id,0,3).$query_id.substr($contract_id,3,5);
               $query = "UPDATE contracts SET contract_id = '$new_contract_id' WHERE contract_id = '$contract_id'";
               $result = mysqli_query($db, $query);
               if ($result) {
                   header("location: index.php");
-              }
+              }*/
           }
       }
   }
@@ -94,12 +126,13 @@ $e_date =  "";
 <div style="min-height: 650px; max-height: 3000000px;">
 <div class="row">
                  <div class="col-sm-offset-6 col-sm-2">
-                 <div class="alert-danger"> <?php echo $msg;?> </div>
+                 <div class="alert-danger"> </div>
                  </div>
                  </div>
 <div class="container">
 <div class="text-center">
 <u><h4>ADD NEW CONTRACT</h4></u>
+<div class="alert-danger"> <?php print_r($msg);?> </div>
 </div>
 <form class="form-horizontal" role="form"  action="<?php htmlspecialchars($_SERVER['PHP_SELF']);?>" method="POST">
  <div class="form-group">
@@ -156,9 +189,10 @@ $e_date =  "";
 <div class="text-center">
 <u><h3> CONTRACTS </h3></u>
 <?php
-$query = "SELECT * FROM contracts";
-$result = mysqli_query($db, $query);
-if (mysqli_num_rows($result) < 1) {
+
+$result = $project->view_all();
+$num = $result->rowCount();
+if ($num < 1) {
     echo "<h4>No contract has been addded</h4>";
 }
 ?>
@@ -178,7 +212,7 @@ if (mysqli_num_rows($result) < 1) {
 				<tbody>
 					<?php
                      $x = 1;
-                        while ($row = mysqli_fetch_assoc($result)) {
+                        while ($row = $result->fetch(PDO::FETCH_ASSOC)) {
                             ?>
                           <?php $d1 = new datetime();
                             $datetime2 = new DateTime($row['end_date']);
